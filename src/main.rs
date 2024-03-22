@@ -1,17 +1,20 @@
-// use plonky2::{plonk::config::{PoseidonGoldilocksConfig, GenericConfig}, util::timing::TimingTree};
-// use starky::{config::StarkConfig, prover::prove, verifier::verify_stark_proof};
+use plonky2::{plonk::config::{PoseidonGoldilocksConfig, GenericConfig}, util::timing::TimingTree};
+use starky::{config::StarkConfig, prover::prove, verifier::verify_stark_proof};
+use crate::{native::{Fp2, Fp, Fp12}, calc_pairing_precomp::PairingPrecompStark };
 // use crate::{native::{Fp2, Fp, Fp12}, calc_pairing_precomp::PairingPrecompStark, miller_loop::MillerLoopStark, final_exponentiate::FinalExponentiateStark, fp12_mul::FP12MulStark};
-// use starky::util::trace_rows_to_poly_values;
-// use std::time::Instant;
+use starky::util::trace_rows_to_poly_values;
+use std::time::Instant;
 
 // use plonky2::plonk::circuit_data::{CircuitConfig, CommonCircuitData, VerifierOnlyCircuitData};
 // use plonky2::plonk::proof::ProofWithPublicInputs;
 // use plonky2::iop::witness::{PartialWitness, WitnessWrite};
 // use plonky2::plonk::circuit_builder::CircuitBuilder;
 // use plonky2::plonk::config::AlgebraicHasher;
-// use plonky2::field::extension::Extendable;
-// use plonky2::hash::hash_types::RichField;
+use plonky2::field::extension::Extendable;
+use plonky2::hash::hash_types::RichField;
 // use plonky2::plonk::prover::prove as plonky2_prove;
+use num_bigint::BigUint;
+use std::str::FromStr;
 // use log::Level;
 // use anyhow::Result;
 
@@ -21,59 +24,60 @@ pub mod fp;
 pub mod fp2;
 // pub mod fp6;
 // pub mod fp12;
-// pub mod utils;
-// pub mod calc_pairing_precomp;
+pub mod utils;
+pub mod calc_pairing_precomp;
 // pub mod miller_loop;
 // pub mod final_exponentiate;
 // pub mod fp12_mul;
 
-// fn calc_pairing_precomp<
-//     F: RichField + Extendable<D>,
-//     C: GenericConfig<D, F=F>,
-//     const D: usize
-// >(
-//     x: Fp2,
-//     y: Fp2,
-//     z: Fp2,
-// ) -> (PairingPrecompStark<F, D>, starky::proof::StarkProofWithPublicInputs<F, C, D>, StarkConfig) {
-//     let mut config = StarkConfig::standard_fast_config();
-//     config.fri_config.rate_bits = 2;
-//     let stark = PairingPrecompStark::<F, D>::new(1024);
-//     let trace = stark.generate_trace(x.get_u32_slice(), y.get_u32_slice(), z.get_u32_slice());
-//     let ell_coeffs = native::calc_pairing_precomp(x, y, z);
-//     let mut public_inputs = Vec::new();
-//     for e in x.get_u32_slice().concat().iter() {
-//         public_inputs.push(F::from_canonical_u32(e.clone()));
-//     }
-//     for e in y.get_u32_slice().concat().iter() {
-//         public_inputs.push(F::from_canonical_u32(e.clone()));
-//     }
-//     for e in z.get_u32_slice().concat().iter() {
-//         public_inputs.push(F::from_canonical_u32(e.clone()));
-//     }
-//     for cs in ell_coeffs.iter() {
-//         for fp2 in cs.iter() {
-//             for fp in fp2.0.iter() {
-//                 for e in fp.0.iter() {
-//                     public_inputs.push(F::from_canonical_u32(*e));
-//                 }
-//             }
-//         }
-//     }
-//     assert_eq!(public_inputs.len(), calc_pairing_precomp::PUBLIC_INPUTS);
-//     let trace_poly_values = trace_rows_to_poly_values(trace);
-//     let t = Instant::now();
-//     let proof = prove::<F, C, PairingPrecompStark<F, D>, D>(
-//         stark,
-//         &config,
-//         trace_poly_values,
-//         &public_inputs,
-//         &mut TimingTree::default(),
-//     ).unwrap();
-//     println!("Time taken for calc_pairing_precomp stark proof {:?}", t.elapsed());
-//     verify_stark_proof(stark, proof.clone(), &config).unwrap();
-//     (stark, proof, config)
-// }
+fn calc_pairing_precomp<
+    F: RichField + Extendable<D>,
+    C: GenericConfig<D, F=F>,
+    const D: usize
+>(
+    x: Fp2,
+    y: Fp2,
+    z: Fp2,
+) -> (PairingPrecompStark<F, D>, starky::proof::StarkProofWithPublicInputs<F, C, D>, StarkConfig) {
+    let mut config = StarkConfig::standard_fast_config();
+    config.fri_config.rate_bits = 2;
+    let stark = PairingPrecompStark::<F, D  >::new(1024);
+    let trace = stark.generate_trace(x.get_u32_slice(), y.get_u32_slice(), z.get_u32_slice());
+    let ell_coeffs = native::calc_pairing_precomp(x, y, z);
+    let mut public_inputs = Vec::new();
+    for e in x.get_u32_slice().concat().iter() {
+        public_inputs.push(F::from_canonical_u32(e.clone()));
+    }
+    for e in y.get_u32_slice().concat().iter() {
+        public_inputs.push(F::from_canonical_u32(e.clone()));
+    }
+    for e in z.get_u32_slice().concat().iter() {
+        public_inputs.push(F::from_canonical_u32(e.clone()));
+    }
+    for cs in ell_coeffs.iter() {
+        for fp2 in cs.iter() {
+            for fp in fp2.0.iter() {
+                for e in fp.0.iter() {
+                    public_inputs.push(F::from_canonical_u32(*e));
+                }
+            }
+        }
+    }
+    assert_eq!(public_inputs.len(), calc_pairing_precomp::PUBLIC_INPUTS);
+    let trace_poly_values = trace_rows_to_poly_values(trace);
+    let t = Instant::now();
+    let proof = prove::<F, C, PairingPrecompStark<F, D>, D>(
+        stark,
+        &config,
+        trace_poly_values,
+        &public_inputs,
+        &mut TimingTree::default(),
+    ).unwrap();
+    println!("Time taken for calc_pairing_precomp stark proof {:?}", t.elapsed());
+    verify_stark_proof(stark, proof.clone(), &config).unwrap();
+    // starky::stark_testing::test_stark_circuit_constraints()
+    (stark, proof, config)
+}
 
 // fn miller_loop_main<
 //     F: RichField + Extendable<D>,
@@ -419,9 +423,30 @@ pub mod fp2;
 // }
 
 fn main() {
-//     env_logger::init();
-//     std::thread::Builder::new().spawn(|| {
-//         aggregate_proof();
-//     }).unwrap().join().unwrap();
-//     return;
+    env_logger::init();
+    std::thread::Builder::new().spawn(|| {
+      // aggregate_proof();
+        const D: usize = 2;
+        type C = PoseidonGoldilocksConfig;
+        type F = <C as GenericConfig<D>>::F;
+
+//     type PpStark = PairingPrecompStark<F, D>;
+//     type MlStark = MillerLoopStark<F, D>;
+//     type Fp12MulStark = FP12MulStark<F, D>;
+//     type FeStark = FinalExponentiateStark<F, D>;
+
+        let g1_x = Fp::get_fp_from_biguint(BigUint::from_str("792388485035126972924700782451696644186473100389722973815184405301748249").unwrap());
+        let g1_y = Fp::get_fp_from_biguint(BigUint::from_str("462588485035126972924700782451696644186473100389722973815184405301741234").unwrap());
+        let g2_x = Fp2([Fp::get_fp_from_biguint(BigUint::from_str("568988485035126972924700782451696644186473100389722973815184405301748249").unwrap()), Fp::get_fp_from_biguint(BigUint::from_str("891288485035126972924700782451696644186473100389722973815184405301748249").unwrap())]);
+        let g2_y = Fp2([Fp::get_fp_from_biguint(BigUint::from_str("467888485035126972924700782451696644186473100389722973815184405301748249").unwrap()), Fp::get_fp_from_biguint(BigUint::from_str("123488485035126972924700782451696644186473100389722973815184405301748249").unwrap())]);
+        let g2_z = Fp2([Fp::get_fp_from_biguint(BigUint::from_str("1").unwrap()), Fp::get_fp_from_biguint(BigUint::from_str("0").unwrap())]);
+
+        let (
+            stark_pp1,
+            proof_pp1,
+            config_pp1
+        ) = calc_pairing_precomp::<F, C, D>(g2_x, g2_y, g2_z);
+
+    }).unwrap().join().unwrap();
+    return;
 }
